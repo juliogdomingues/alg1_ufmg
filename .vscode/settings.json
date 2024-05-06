@@ -3,6 +3,9 @@
     "iostream": "cpp",
     "vector": "cpp",
     "algorithm": "cpp",
-    "climits": "cpp"
+    "climits": "cpp",
+    "*.tcc": "cpp",
+    "limits": "cpp",
+    "unordered_set": "cpp"
   }
 }

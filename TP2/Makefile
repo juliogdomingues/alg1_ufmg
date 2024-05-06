@@ -6,7 +6,7 @@ INC = include
 BIN = bin
 OBJS = $(OBJ)/main.o
 # HDRS = $(INC)/heap.hpp
-CFLAGS = -g -Wall -c -I$(INC)
+CFLAGS = -g -Wall -std=c++17 -c -I$(INC)
 
 EXE = $(BIN)/main.out
 
@@ -15,6 +15,7 @@ all: $(EXE)
 tests: $(EXE)
 	$(EXE) -d < tests/test1.txt
 	$(EXE) -d < tests/test2.txt
+	$(EXE) -d < tests/test3.txt
 	
 $(BIN)/main.out: $(OBJS)
 	$(CC) -o $(BIN)/main.out $(OBJS) $(LIBS)

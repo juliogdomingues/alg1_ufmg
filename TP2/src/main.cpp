@@ -1,196 +1,211 @@
-#include <algorithm>
-#include <climits>
-#include <cstdio>
-#include <list>
-#include <set>
-#include <utility>
+#include <iostream>
 #include <vector>
+#include <algorithm>
+#include <queue>
+#include <map>
+#include <set>
+#include <tuple>
+#include <limits>
 
 using namespace std;
 
-// Class to represent a vertex in the graph
-class Vertex {
-public:
-    int discoveryTime; // Time when the vertex was discovered during DFS
-    int lowLink; // Lowest discovery time reachable from the vertex
-    Vertex() : discoveryTime(0), lowLink(INT_MAX) {}
+const int INF = numeric_limits<int>::max();
 
-    void updateDiscoveryTime(int newTime) {
-        discoveryTime = newTime;
+// Variáveis globais
+int numEspacos, numConexoes, numMonstros, maxTurnos, recursosTurno;
+vector<vector<pair<int, int>>> adjList;     // Lista de adjacência para armazenar os pesos e conexões entre espaços.
+vector<vector<int>> adjListInversa;         // Lista de adjacência inversa para uso na busca em largura.
+vector<vector<int>> trajetosMonstros;       // Armazena os trajetos dos monstros.
+set<pair<int, int>> bloqueios;              // Conjunto de espaços e turnos bloqueados pelos monstros.
+
+vector<int> antecessor;
+vector<int> distBFS;
+
+map<pair<int, int>, pair<int, int>> antecessorDijkstra; // Mapa para antecessor no Dijkstra.
+map<pair<int, int>, int> distDijkstra;                  // Mapa para distâncias no Dijkstra.
+map<pair<int, int>, bool> visitado;                     // Mapa para controle de visitados no Dijkstra.
+
+/**
+ * Realiza a busca em largura (BFS) para determinar caminhos mínimos do vértice inicial para todos os outros.
+ * 
+ * @param inicio O vértice de onde a BFS começa.
+ */
+void bfs(int inicio = 0) {
+    antecessor = distBFS = vector<int>(numEspacos, INF);    // Inicializa vetores com INF.
+    antecessor[inicio] = inicio;                            // O próprio vértice é seu antecessor inicial.
+    distBFS[inicio] = 0;                                    // Distância para si mesmo é zero.
+
+    queue<int> fila;
+    fila.push(inicio);
+    while (!fila.empty()) {
+        int vertice = fila.front();
+        fila.pop();
+        for (auto& adj : adjListInversa[vertice]) {
+            if (distBFS[vertice] + 1 <= distBFS[adj]) {
+                if (distBFS[vertice] + 1 < distBFS[adj]) {
+                    distBFS[adj] = distBFS[vertice] + 1;
+                    antecessor[adj] = vertice;
+                    fila.push(adj);
+                } else if (distBFS[vertice] + 1 == distBFS[adj] && vertice < antecessor[adj]) {
+                    antecessor[adj] = vertice;
+                }
+            }
+        }
     }
-
-    void updateLowLink(int newLow) {
-        lowLink = min(lowLink, newLow);
-    }
-};
-
-vector<Vertex> vertices; 
-set<int> links; // Store edge links in a set, as they need to be printed in ascending order
-int nClusters = 0;
-
-typedef pair<int, int> Edge;
-
-list<Edge> EdgeList;
-set<set<int>> clusters; // Clusters must be sorted lexicographically. Ou seja, se temos os clusters a = {1, 3, 7} e b = {1, 2, 100}, o cluster b deve ser listado antes do cluster a, e, portanto, possuir um identificador menor.
-set<set<int>> forest;
-typedef set<int> VertexSet;
-
-// Function to identify and retrieve clusters in the graph
-void findClusters(int u, int v) {
-    VertexSet clusterVertices;
-    list<Edge> tempEdgeList; // Temporary stack to hold the edges of the current cluster
-
-    // Pop edges from EdgeList until we find the edge that starts the current cluster
-    while (!EdgeList.empty() && (EdgeList.back().first != u || EdgeList.back().second != v)) {
-        tempEdgeList.push_front(EdgeList.back()); // Move the edge to the temporary stack
-        EdgeList.pop_back();
-    }
-
-    // If we found the starting edge, add it to the temporary stack
-    if (!EdgeList.empty()) {
-        tempEdgeList.push_front(EdgeList.back());
-        EdgeList.pop_back();
-    }
-
-    // Now, tempEdgeList contains the edges of the current cluster in reverse order
-    // Add Vertexs to the cluster in the correct order
-    while (!tempEdgeList.empty()) {
-        Edge edge = tempEdgeList.front();
-        tempEdgeList.pop_front();
-        clusterVertices.insert(edge.first);
-        clusterVertices.insert(edge.second);
-    }
-
-    // Add the cluster to the set of clusters
-    clusters.insert(clusterVertices);
-    nClusters++;
 }
 
-// Depth-first search to identify articulation points and clusters
-void dfs(vector<vector<int>> &Graph, int indexVertex, int parent, int time) {
-    time++;
-    vertices[indexVertex].updateDiscoveryTime(time); 
-    vertices[indexVertex].updateLowLink(time); 
-    int children = 0;
-    vector<int>& adjacentes = Graph[indexVertex];
+/**
+ * Executa o algoritmo de Dijkstra no grafo para encontrar o caminho de custo mínimo.
+ * 
+ * @param inicio O vértice inicial do caminho.
+ * @return Um par contendo o último vértice do caminho e o turno em que ele foi alcançado.
+ */
+pair<int, int> dijkstra(int inicio = 0) {
+    distDijkstra[{inicio, 0}] = 0;
+    antecessorDijkstra[{inicio, 0}] = {inicio, 0};
 
-    for(int i = 0; i < (int)adjacentes.size(); i++) {
-        if(vertices[adjacentes[i]-1].discoveryTime == 0) { 
-            children++;
-            EdgeList.push_back(make_pair(indexVertex+1, adjacentes[i])); 
+    priority_queue<tuple<int, int, int, int>> pq;   // Fila de prioridade para Dijkstra com peso negativo para min heap.
+    pq.push({0, 0, inicio, 0});
 
-            dfs(Graph, adjacentes[i]-1, indexVertex+1, time);
+    while (!pq.empty()) {
+        auto [custo, recurso, vertice, turno] = pq.top();
+        pq.pop();
 
-            if(vertices[adjacentes[i]-1].lowLink < vertices[indexVertex].lowLink) {
-                vertices[indexVertex].updateLowLink(vertices[adjacentes[i]-1].lowLink);
-            }
-            
-            if(parent != -1 && vertices[adjacentes[i]-1].lowLink >= vertices[indexVertex].discoveryTime) {
-                links.insert(indexVertex+1);               
-            }
+        if (vertice == numEspacos - 1) {    // Verifica se chegou no último espaço.
+            return {vertice, turno};
+        }
+        if (visitado[{vertice, turno}] || turno + 1 > maxTurnos) {  // Pula iterações desnecessárias.
+            continue;
+        }
 
-            if((vertices[indexVertex].discoveryTime == 1 && children > 1) || (vertices[indexVertex].discoveryTime > 1 && vertices[adjacentes[i]-1].lowLink >= vertices[indexVertex].discoveryTime)) {
-                findClusters(indexVertex+1, adjacentes[i]);
-            }
+        visitado[{vertice, turno}] = true;
+        custo *= -1;
+        recurso += recursosTurno;
+        turno++;
 
-        } else if(adjacentes[i] != parent) { 
-            if(vertices[adjacentes[i]-1].discoveryTime < vertices[indexVertex].lowLink) {
-                vertices[indexVertex].updateLowLink(vertices[adjacentes[i]-1].discoveryTime);
-            }
-            if(vertices[adjacentes[i]-1].discoveryTime < vertices[indexVertex].discoveryTime) {
-                EdgeList.push_back(make_pair(indexVertex+1, adjacentes[i]));
+        for (auto& [adj, peso] : adjList[vertice]) {
+            if (!bloqueios.count({adj, turno - 1}) && !bloqueios.count({adj, turno})) {
+                if (!distDijkstra.count({adj, turno})) {
+                    distDijkstra[{adj, turno}] = INF;
+                }
+
+                if (recurso >= peso && distDijkstra[{vertice, turno - 1}] + peso < distDijkstra[{adj, turno}]) {
+                    antecessorDijkstra[{adj, turno}] = {vertice, turno - 1};
+                    distDijkstra[{adj, turno}] = distDijkstra[{vertice, turno - 1}] + peso;
+                    pq.push({-distDijkstra[{adj, turno}], recurso - peso, adj, turno});
+                }
             }
         }
     }
 
-    if(parent == -1 && children > 1) {
-        links.insert(indexVertex+1);      
-    }
+    return {-1, -1};    // Retorna -1 se não encontrar um caminho válido.
 }
 
+// Função para imprimir o caminho
+void imprimirCaminho(pair<int, int> pos) {
+    printf("%d %d\n", distDijkstra[pos], pos.second);
+
+    vector<int> caminho;
+    while (pos != antecessorDijkstra[pos]) {
+        caminho.emplace_back(pos.first);
+        pos = antecessorDijkstra[pos];
+    }
+    caminho.emplace_back(0);
+
+    for (int i = caminho.size() - 1; i >= 0; --i) {
+        printf("%d%c", caminho[i] + 1, i == 0 ? '\n' : ' ');
+    }
+}
 
 int main() {
-    int nVertexs, nEdges;
-    int time = 0;
-    if (scanf("%d %d", &nVertexs, &nEdges) != 2) {
-        fprintf(stderr, "Error reading nVertexs and nEdges\n");
+    // Leitura de entrada
+    if (scanf("%d %d %d %d %d", &numEspacos, &numConexoes, &numMonstros, &maxTurnos, &recursosTurno) != 5) {
+        cerr << "Erro na leitura dos dados iniciais.\n";
         return 1;
     }
-    vector<vector<int>> Graph(nVertexs);
-    vertices.resize(nVertexs);
+    adjList = vector<vector<pair<int, int>>>(numEspacos);
+    adjListInversa = vector<vector<int>>(numEspacos);
+    vector<int> indicesMonstros(numMonstros);
+    trajetosMonstros = vector<vector<int>>(numMonstros);
 
-    // Read edges of the graph
-    for (int i = 0; i < nEdges; i++) {
-        int Vertex1, Vertex2;
-        if (scanf("%d %d", &Vertex1, &Vertex2) != 2) {
-            fprintf(stderr, "Error reading Vertex1 and Vertex2 at iteration %d\n", i);
+    for (auto& indice : indicesMonstros) {
+        if (scanf("%d", &indice) != 1) {
+            cerr << "Erro na leitura dos índices dos monstros.\n";
             return 1;
         }
-
-        Graph[Vertex1 - 1].push_back(Vertex2);
-        Graph[Vertex2 - 1].push_back(Vertex1);
+        --indice;
     }
 
-    // Perform DFS to identify articulation points and clusters
-    for (int i = 0; i < nVertexs; i++) {
-        if (vertices[i].discoveryTime == 0) {
-            dfs(Graph, i, -1, time);
+    for (int i = 0; i < numEspacos; ++i) {
+        adjList[i].emplace_back(i, 1);  // Autoconexão para cada espaço.
+    }
+
+    for (int i = 0; i < numConexoes; ++i) {
+        int de, para, peso;
+        if (scanf("%d %d %d", &de, &para, &peso) != 3) {
+            cerr << "Erro na leitura das conexões.\n";
+            return 1;
         }
-        if (!EdgeList.empty()) {
-            set<int> clusterVertices;
-            while (!EdgeList.empty()) {
-                clusterVertices.insert(EdgeList.back().first);
-                clusterVertices.insert(EdgeList.back().second);
-                EdgeList.pop_back();
+        --de;
+        --para;
+        adjList[de].emplace_back(para, peso);
+        adjListInversa[para].emplace_back(de);
+    }
+
+    bfs();  // Executa BFS para encontrar trajetos mínimos.
+
+    for (int i = 0; i < numMonstros; ++i) {
+        int turnoBloqueio = 0;
+        if (antecessor[indicesMonstros[i]] != INF) {
+            int atual = indicesMonstros[i];
+            while (true) {
+                trajetosMonstros[i].emplace_back(atual);
+                bloqueios.insert({atual, turnoBloqueio++});
+                if (atual == 0) break;
+                atual = antecessor[atual];
             }
-            clusters.insert(clusterVertices);
-            nClusters++;
-        }
-    }
 
-    // Output the number of articulation points
-    printf("%d\n", (int)links.size());
-    for(set<int>::iterator itr = links.begin(); itr != links.end(); itr++) {
-        printf("%d\n", *itr);
-    }
-
-    // Output the number of clusters
-    printf("%d\n", nClusters);
-
-    int i = 1;
-    int j = 1;
-    int nEdgesForest = 0;
-
-    // Output clusters
-    set<set<int>>::iterator itr1;
-    set<int>::iterator itr;
-    for(itr1 = clusters.begin(); itr1 != clusters.end(); itr1++) {
-        printf("%d %lu ", nVertexs+i, itr1->size());
-
-        itr = itr1->begin(); 
-        while (itr != itr1->end()) {
-            if(links.find(*itr) != links.end()) {
-                set<int> elemForest;
-                elemForest.insert(nVertexs+i);
-                elemForest.insert(*itr);
-                forest.insert(elemForest);
-                nEdgesForest++;
+            for (int turno = turnoBloqueio; turno <= maxTurnos; ++turno) {
+                bloqueios.insert({0, turno});
             }
-            if(j == (int)itr1->size()) printf("%d\n", *itr);
-            else printf("%d ", *itr);
-            j++;
-            itr++;
+        } else {
+            trajetosMonstros[i].emplace_back(indicesMonstros[i]);
+            for (int turno = 0; turno <= maxTurnos; ++turno) {
+                bloqueios.insert({indicesMonstros[i], turno});
+            }
         }
-        j = 1;
-        i++;
     }
 
-    // Output forest
-    printf("%d %d\n", nClusters+(int)links.size(), nEdgesForest);
-    for(itr1 = forest.begin(); itr1 != forest.end(); itr1++) {
-        printf("%d %d\n", *(itr1->begin()), *(itr1->rbegin()));
+    pair<int, int> resultado = dijkstra();
+    printf("%d\n", resultado.first == -1 ? 0 : 1);
+
+    for (auto& trajeto : trajetosMonstros) {
+        printf("%zu ", trajeto.size());
+        for (size_t i = 0; i < trajeto.size(); ++i) {
+            printf("%d%c", trajeto[i] + 1, i == trajeto.size() - 1 ? '\n' : ' ');
+        }
+    }
+
+    if (resultado.first != -1) {
+        imprimirCaminho(resultado);
+    } else {
+        int maxVertice = 0, maxTurno = 0;
+        for (auto& entrada : distDijkstra) {
+            if (entrada.second == INF) continue;
+            if (entrada.first.second > maxTurno || (entrada.first.second == maxTurno && entrada.second < distDijkstra[{maxVertice, maxTurno}])) {
+                maxVertice = entrada.first.first;
+                maxTurno = entrada.first.second;
+            }
+        }
+
+        if (bloqueios.count({maxVertice, maxTurno + 1})) {
+            distDijkstra[{maxVertice, maxTurno + 1}] = distDijkstra[{maxVertice, maxTurno}] + 1;
+            antecessorDijkstra[{maxVertice, maxTurno + 1}] = {maxVertice, maxTurno};
+            maxTurno++;
+        }
+
+        imprimirCaminho({maxVertice, maxTurno});
     }
 
     return 0;
 }
-
